@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Valtorta</title>
+<meta name="theme-color" content="#2b2118">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icono-192.png">
+<style>
+:root{--bg:#f6f1e9;--fg:#2b2118;--suave:#7a6a58;--linea:#e3d8c8;--acento:#8a3b1e;--acento-fg:#fff;--oido:#e9e1d3;--tarjeta:#fffaf2}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1612;--fg:#efe6d8;--suave:#a8987f;--linea:#3a3029;--acento:#d0703f;--acento-fg:#1b1612;--oido:#2c241d;--tarjeta:#241d17}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:560px;margin:0 auto}
+h1{font-size:15px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);margin:4px 0 14px}
+#play{display:block;width:100%;border:0;border-radius:22px;background:var(--acento);color:var(--acento-fg);padding:26px 20px;text-align:left;cursor:pointer;text-decoration:none}
+#play .n{font-size:44px;font-weight:700;line-height:1}
+#play .t{font-size:19px;margin-top:8px;opacity:.95}
+#play .d{font-size:14px;margin-top:6px;opacity:.8}
+.fila{display:flex;gap:10px;margin-top:12px}
+.fila button{flex:1;font:inherit;padding:16px 8px;border-radius:16px;border:1px solid var(--linea);background:var(--tarjeta);color:var(--fg);cursor:pointer}
+#hecho{flex:2;font-weight:600}
+#resumen{color:var(--suave);font-size:14px;margin:18px 0 8px}
+#ir{display:flex;gap:8px;margin:8px 0 14px}
+#ir input{flex:1;min-width:0;font:inherit;padding:12px;border-radius:12px;border:1px solid var(--linea);background:var(--tarjeta);color:var(--fg)}
+#ir button{font:inherit;padding:12px 16px;border-radius:12px;border:1px solid var(--linea);background:var(--tarjeta);color:var(--fg)}
+#mapa{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:4px}
+#mapa button{font:13px/1 system-ui,sans-serif;padding:10px 0;border-radius:8px;border:1px solid var(--linea);background:var(--tarjeta);color:var(--fg);cursor:pointer}
+#mapa button.oido{background:var(--oido);color:var(--suave);border-color:transparent}
+#mapa button.medias{background:linear-gradient(to top,var(--oido) 50%,var(--tarjeta) 50%)}
+#mapa button.actual{outline:3px solid var(--acento);outline-offset:-1px;font-weight:700}
+#detalle{margin-top:14px;padding:14px;border-radius:14px;background:var(--tarjeta);border:1px solid var(--linea);display:none}
+#detalle .acc{display:flex;gap:8px;margin-top:10px}
+#detalle .acc button,#detalle .acc a{flex:1;text-align:center;font:inherit;font-size:15px;padding:12px 6px;border-radius:12px;border:1px solid var(--linea);background:var(--bg);color:var(--fg);text-decoration:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Radioteatro María Valtorta</h1>
+<a id="play" href="#"><div class="n">…</div><div class="t"></div><div class="d"></div></a>
+<div class="fila">
+  <button id="atras" aria-label="Anterior">◀</button>
+  <button id="hecho">✓ Ya lo terminé</button>
+  <button id="adelante" aria-label="Siguiente">▶</button>
+</div>
+<p id="resumen"></p>
+<form id="ir"><input id="num" type="number" inputmode="numeric" placeholder="Ir al capítulo…"><button>Ir</button></form>
+<div id="mapa"></div>
+<div id="detalle"></div>
+</main>
+<script>
+const CLAVE = 'valtorta-coche-v1';
+let caps = [], porN = {}, estado = {oidos: [], actual: 1};
+
+function leer(){ try { const s = JSON.parse(localStorage.getItem(CLAVE)); if (s) estado = s; } catch(e){} }
+function guardar(){ try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch(e){} }
+const oido = n => estado.oidos.includes(n);
+function marcar(n, si){ estado.oidos = estado.oidos.filter(x => x !== n); if (si) estado.oidos.push(n); }
+// El siguiente sin oír desde n (incluido); si todo está oído, n.
+function pendienteDesde(n){ for (const c of caps) if (c.n >= n && !oido(c.n)) return c.n; return n; }
+function vecino(n, paso){ const i = caps.findIndex(c => c.n === n); const j = Math.min(caps.length-1, Math.max(0, i+paso)); return caps[j].n; }
+const url = c => 'https://www.youtube.com/watch?v=' + c.id;
+const mins = s => s ? Math.round(s/60) + ' min' : '';
+
+function pintar(){
+  const c = porN[estado.actual] || caps[0];
+  const play = document.getElementById('play');
+  play.href = url(c);
+  play.querySelector('.n').textContent = '▶ ' + c.n;
+  play.querySelector('.t').textContent = c.titulo;
+  play.querySelector('.d').textContent = [mins(c.dur), oido(c.n) ? 'ya oído' : ''].filter(Boolean).join(' · ');
+  const total = caps.length, hechos = caps.filter(c => oido(c.n)).length;
+  document.getElementById('resumen').textContent = `${hechos} de ${total} oídos · medio relleno = empezado · toca un número para marcarlo o abrirlo`;
+  const mapa = document.getElementById('mapa');
+  mapa.replaceChildren(...caps.map(k => {
+    const b = document.createElement('button');
+    b.textContent = k.n; b.title = k.titulo;
+    if (oido(k.n)) b.className = 'oido';
+    else if ((estado.medias || []).includes(k.n)) b.className = 'medias';
+    if (k.n === c.n) b.classList.add('actual');
+    b.onclick = () => detalle(k.n);
+    return b;
+  }));
+}
+
+function detalle(n){
+  const c = porN[n], d = document.getElementById('detalle');
+  d.style.display = 'block';
+  d.innerHTML = '';
+  const t = document.createElement('div'); t.innerHTML = `<b>${c.n}.</b> `; t.append(c.titulo);
+  const acc = document.createElement('div'); acc.className = 'acc';
+  const a = document.createElement('a'); a.href = url(c); a.textContent = '▶ Escuchar';
+  a.onclick = () => { estado.actual = n; guardar(); pintar(); };
+  const m = document.createElement('button'); m.textContent = oido(n) ? 'Desmarcar' : 'Marcar oído';
+  m.onclick = () => { marcar(n, !oido(n)); guardar(); pintar(); detalle(n); };
+  const s = document.createElement('button'); s.textContent = 'Seguir desde aquí';
+  s.onclick = () => { estado.actual = n; guardar(); pintar(); d.style.display = 'none'; scrollTo({top:0, behavior:'smooth'}); };
+  acc.append(a, m, s); d.append(t, acc);
+  d.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+document.getElementById('hecho').onclick = () => {
+  marcar(estado.actual, true);
+  estado.actual = pendienteDesde(vecino(estado.actual, 1));
+  guardar(); pintar();
+};
+document.getElementById('atras').onclick = () => { estado.actual = vecino(estado.actual, -1); guardar(); pintar(); };
+document.getElementById('adelante').onclick = () => { estado.actual = vecino(estado.actual, 1); guardar(); pintar(); };
+document.getElementById('ir').onsubmit = e => {
+  e.preventDefault(); const n = +document.getElementById('num').value;
+  if (porN[n]) { estado.actual = n; guardar(); pintar(); detalle(n); }
+};
+
+Promise.all([
+  fetch('capitulos.json').then(r => r.json()),
+  fetch('escuchados.json').then(r => r.ok ? r.json() : null).catch(() => null)
+]).then(([lista, inicial]) => {
+  caps = lista; caps.forEach(c => porN[c.n] = c);
+  leer();
+  // Primera vez en este móvil: arranca con lo importado del historial de YouTube.
+  if (!estado.importado && inicial) {
+    estado.oidos = [...new Set([...estado.oidos, ...inicial.oidos])];
+    estado.medias = inicial.medias || [];
+    estado.actual = pendienteDesde(inicial.desde || 1);
+    estado.importado = true; guardar();
+  }
+  if (!porN[estado.actual]) estado.actual = caps[0].n;
+  pintar();
+});
+</script>
+</body>
+</html>
